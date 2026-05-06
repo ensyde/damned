@@ -1,0 +1,600 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  BANNED
+  SUSPENDED
+  PENDING_VERIFICATION
+}
+
+enum NotificationType {
+  FORUM_REPLY
+  MENTION
+  NEW_PM
+  RANK_CHANGE
+  DOWNLOAD_APPROVED
+  DOWNLOAD_REJECTED
+  SYSTEM_BROADCAST
+}
+
+enum DownloadStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum MessageStatus {
+  ACTIVE
+  ARCHIVED
+  DELETED
+}
+
+enum PageStatus {
+  PUBLISHED
+  DRAFT
+}
+
+enum ReportStatus {
+  OPEN
+  RESOLVED
+  DISMISSED
+}
+
+enum ReportTarget {
+  POST
+  THREAD
+  DOWNLOAD
+  USER
+  MESSAGE
+}
+
+// ─── Users & Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id                String    @id @default(cuid())
+  username          String    @unique
+  email             String    @unique
+  passwordHash      String?
+  displayName       String?
+  avatar            String?
+  coverPhoto        String?
+  bio               String?
+  website           String?
+  location          String?
+  status            UserStatus @default(PENDING_VERIFICATION)
+  isPublicProfile   Boolean   @default(true)
+  emailVerified     Boolean   @default(false)
+  reputationPoints  Int       @default(0)
+  postCount         Int       @default(0)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastSeenAt        DateTime?
+  banReason         String?
+  banExpiresAt      DateTime?
+
+  // Discord link
+  discordId         String?   @unique
+  discordUsername   String?
+
+  // Social links (stored as JSON)
+  socialLinks       Json?
+
+  // Relations
+  primaryRankId     String?
+  primaryRank       Rank?     @relation("PrimaryRank", fields: [primaryRankId], references: [id])
+  secondaryRanks    UserSecondaryRank[]
+
+  tokens            RefreshToken[]
+  verificationTokens EmailVerificationToken[]
+  passwordResets    PasswordResetToken[]
+
+  threads           Thread[]
+  posts             Post[]
+  postReactions     PostReaction[]
+  postEditHistory   PostEditHistory[]
+
+  downloads         Download[]
+  downloadReviews   DownloadReview[]
+
+  conversations     ConversationParticipant[]
+  sentMessages      Message[]
+
+  notifications     Notification[]
+  notifPrefs        NotificationPreference[]
+
+  followers         UserFollow[] @relation("Following")
+  following         UserFollow[] @relation("Follower")
+
+  blocks            UserBlock[] @relation("Blocker")
+  blockedBy         UserBlock[] @relation("Blocked")
+
+  widgetLayouts     WidgetLayout[]
+
+  reports           Report[] @relation("Reporter")
+  reportedItems     Report[] @relation("ReportedUser")
+
+  forumSubscriptions ThreadSubscription[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  revokedAt DateTime?
+  userAgent String?
+  ipAddress String?
+
+  @@map("refresh_tokens")
+}
+
+model EmailVerificationToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@map("email_verification_tokens")
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  usedAt    DateTime?
+
+  @@map("password_reset_tokens")
+}
+
+model UserFollow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  follower    User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following   User     @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+
+  @@unique([followerId, followingId])
+  @@map("user_follows")
+}
+
+model UserBlock {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@map("user_blocks")
+}
+
+// ─── Ranks & Permissions ─────────────────────────────────────────────────────
+
+model Rank {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  color       String   @default("#888888")
+  badgeIcon   String?
+  priority    Int      @default(0)
+  isDefault   Boolean  @default(false)
+  isStaff     Boolean  @default(false)
+  permissions String[] // named permission strings
+
+  primaryUsers    User[]            @relation("PrimaryRank")
+  secondaryUsers  UserSecondaryRank[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ranks")
+}
+
+model UserSecondaryRank {
+  id     String @id @default(cuid())
+  userId String
+  rankId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  rank   Rank   @relation(fields: [rankId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, rankId])
+  @@map("user_secondary_ranks")
+}
+
+// ─── Forums ───────────────────────────────────────────────────────────────────
+
+model ForumCategory {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  slug        String   @unique
+  sortOrder   Int      @default(0)
+  isVisible   Boolean  @default(true)
+
+  subforums   Subforum[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("forum_categories")
+}
+
+model Subforum {
+  id                String   @id @default(cuid())
+  name              String
+  description       String?
+  slug              String   @unique
+  sortOrder         Int      @default(0)
+  isVisible         Boolean  @default(true)
+  isLocked          Boolean  @default(false)
+  requiredPermission String?  // e.g. "forum.staff_access"
+
+  categoryId        String
+  category          ForumCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  parentId          String?
+  parent            Subforum?  @relation("SubforumParent", fields: [parentId], references: [id])
+  children          Subforum[] @relation("SubforumParent")
+
+  threads           Thread[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("subforums")
+}
+
+model Thread {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  isPinned    Boolean  @default(false)
+  isLocked    Boolean  @default(false)
+  isSticky    Boolean  @default(false)
+  viewCount   Int      @default(0)
+  replyCount  Int      @default(0)
+  tags        String[]
+
+  subforumId  String
+  subforum    Subforum @relation(fields: [subforumId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id])
+  lastPostAt  DateTime @default(now())
+
+  posts           Post[]
+  subscriptions   ThreadSubscription[]
+
+  // Full-text search
+  searchVector    Unsupported("tsvector")?
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  deletedAt   DateTime?
+
+  @@index([searchVector], type: Gin)
+  @@map("threads")
+}
+
+model ThreadSubscription {
+  id       String @id @default(cuid())
+  threadId String
+  userId   String
+  thread   Thread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([threadId, userId])
+  @@map("thread_subscriptions")
+}
+
+model Post {
+  id        String   @id @default(cuid())
+  body      String
+  isFirst   Boolean  @default(false) // first post in thread = OP
+  viewCount Int      @default(0)
+
+  threadId  String
+  thread    Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id])
+
+  reactions   PostReaction[]
+  editHistory PostEditHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  // Full-text search
+  searchVector Unsupported("tsvector")?
+
+  @@index([searchVector], type: Gin)
+  @@map("posts")
+}
+
+model PostReaction {
+  id      String @id @default(cuid())
+  emoji   String
+  postId  String
+  userId  String
+  post    Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId, emoji])
+  @@map("post_reactions")
+}
+
+model PostEditHistory {
+  id        String   @id @default(cuid())
+  postId    String
+  editorId  String
+  bodyBefore String
+  bodyAfter  String
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  editor    User     @relation(fields: [editorId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@map("post_edit_history")
+}
+
+// ─── Downloads ────────────────────────────────────────────────────────────────
+
+model DownloadCategory {
+  id                String     @id @default(cuid())
+  name              String
+  slug              String     @unique
+  description       String?
+  sortOrder         Int        @default(0)
+  requiredPermission String?
+
+  downloads         Download[]
+
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+
+  @@map("download_categories")
+}
+
+model Download {
+  id            String         @id @default(cuid())
+  title         String
+  slug          String         @unique
+  description   String
+  version       String?
+  fileUrl       String
+  fileSize      BigInt?
+  fileName      String?
+  screenshots   String[]
+  downloadCount Int            @default(0)
+  status        DownloadStatus @default(PENDING)
+  rejectionNote String?
+
+  categoryId    String
+  category      DownloadCategory @relation(fields: [categoryId], references: [id])
+  uploaderId    String
+  uploader      User             @relation(fields: [uploaderId], references: [id])
+  approvedById  String?
+
+  reviews       DownloadReview[]
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  publishedAt   DateTime?
+  deletedAt     DateTime?
+
+  @@map("downloads")
+}
+
+model DownloadReview {
+  id          String   @id @default(cuid())
+  rating      Int      // 1-5
+  body        String?
+  downloadId  String
+  userId      String
+  download    Download @relation(fields: [downloadId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id])
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([downloadId, userId])
+  @@map("download_reviews")
+}
+
+// ─── Private Messaging ────────────────────────────────────────────────────────
+
+model Conversation {
+  id          String   @id @default(cuid())
+  subject     String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+
+  participants ConversationParticipant[]
+  messages    Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String       @id @default(cuid())
+  conversationId String
+  userId         String
+  hasLeft        Boolean      @default(false)
+  unreadCount    Int          @default(0)
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String        @id @default(cuid())
+  body           String
+  status         MessageStatus @default(ACTIVE)
+  conversationId String
+  senderId       String
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  deletedAt      DateTime?
+
+  @@map("messages")
+}
+
+// ─── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  type      NotificationType
+  title     String
+  body      String?
+  link      String?
+  isRead    Boolean          @default(false)
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  metadata  Json?
+
+  createdAt DateTime @default(now())
+
+  @@map("notifications")
+}
+
+model NotificationPreference {
+  id      String           @id @default(cuid())
+  userId  String
+  type    NotificationType
+  inApp   Boolean          @default(true)
+  email   Boolean          @default(false)
+  user    User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, type])
+  @@map("notification_preferences")
+}
+
+// ─── Custom Static Pages ─────────────────────────────────────────────────────
+
+model StaticPage {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  content     String
+  status      PageStatus @default(DRAFT)
+  showInNav   Boolean    @default(false)
+  navLabel    String?
+  navOrder    Int        @default(0)
+  metaTitle   String?
+  metaDesc    String?
+  ogImage     String?
+
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  publishedAt DateTime?
+
+  @@map("static_pages")
+}
+
+// ─── Themes ───────────────────────────────────────────────────────────────────
+
+model Theme {
+  id             String   @id @default(cuid())
+  name           String   @unique
+  isActive       Boolean  @default(false)
+  primaryColor   String   @default("#6366f1")
+  accentColor    String   @default("#8b5cf6")
+  bgColor        String   @default("#0f172a")
+  surfaceColor   String   @default("#1e293b")
+  textColor      String   @default("#f8fafc")
+  fontFamily     String   @default("Inter, sans-serif")
+  borderRadius   String   @default("0.5rem")
+  logoUrl        String?
+  faviconUrl     String?
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("themes")
+}
+
+// ─── Dashboard Widgets ────────────────────────────────────────────────────────
+
+model WidgetLayout {
+  id      String @id @default(cuid())
+  userId  String
+  user    User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  layout  Json   // array of widget configs with position/size
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId])
+  @@map("widget_layouts")
+}
+
+// ─── Reports ─────────────────────────────────────────────────────────────────
+
+model Report {
+  id            String       @id @default(cuid())
+  target        ReportTarget
+  targetId      String
+  reason        String
+  status        ReportStatus @default(OPEN)
+  resolution    String?
+  reporterId    String
+  reporter      User         @relation("Reporter", fields: [reporterId], references: [id])
+  reportedUserId String?
+  reportedUser  User?        @relation("ReportedUser", fields: [reportedUserId], references: [id])
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@map("reports")
+}
+
+// ─── Site Settings ────────────────────────────────────────────────────────────
+
+model SiteSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+
+  @@map("site_settings")
+}
+
+// ─── Audit Log ────────────────────────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  action    String
+  actorId   String?
+  targetId  String?
+  details   Json?
+  ipAddress String?
+  createdAt DateTime @default(now())
+
+  @@map("audit_logs")
+}
