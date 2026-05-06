@@ -109,6 +109,7 @@ model User {
   downloadReviews   DownloadReview[]
 
   conversations     ConversationParticipant[]
+  sentMessages      Message[]
 
   notifications     Notification[]
   notifPrefs        NotificationPreference[]
@@ -450,12 +451,13 @@ model ConversationParticipant {
 }
 
 model Message {
-  id             String       @id @default(cuid())
+  id             String        @id @default(cuid())
   body           String
   status         MessageStatus @default(ACTIVE)
   conversationId String
   senderId       String
-  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversation   Conversation  @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender         User          @relation(fields: [senderId], references: [id], onDelete: Cascade)
 
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt

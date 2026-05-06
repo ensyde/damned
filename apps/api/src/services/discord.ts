@@ -57,12 +57,13 @@ export const discordService = {
         }>;
       };
 
+      const validStatuses = new Set(["online", "idle", "dnd"]);
       const members: DiscordMemberPresence[] = (widget.members ?? []).map((m) => ({
         id: m.id,
         username: m.username,
         displayName: m.username,
         avatar: m.avatar_url ?? null,
-        status: (m.status as "online" | "idle" | "dnd") ?? "online",
+        status: (validStatuses.has(m.status) ? m.status : "online") as "online" | "idle" | "dnd",
         activity: m.game?.name ?? null,
       }));
 

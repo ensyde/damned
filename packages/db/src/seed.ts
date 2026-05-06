@@ -93,21 +93,25 @@ async function main() {
   });
 
   // Admin user
-  const adminUser = await prisma.user.upsert({
-    where: { email: "admin@damned.gg" },
-    update: {},
-    create: {
-      username: "admin",
-      email: "admin@damned.gg",
-      displayName: "Administrator",
-      passwordHash: await bcrypt.hash("change_me_admin_password", 12),
-      emailVerified: true,
-      status: "ACTIVE",
-      primaryRankId: adminRank.id,
-    },
-  });
-
-  console.log(`✅ Admin user: ${adminUser.email}`);
+  const adminPassword = process.env.ADMIN_SEED_PASSWORD;
+  if (!adminPassword) {
+    console.warn("⚠️  ADMIN_SEED_PASSWORD env var not set — skipping admin account creation. Set it in .env and re-run seed.");
+  } else {
+    const adminUser = await prisma.user.upsert({
+      where: { email: "admin@damned.gg" },
+      update: {},
+      create: {
+        username: "admin",
+        email: "admin@damned.gg",
+        displayName: "Administrator",
+        passwordHash: await bcrypt.hash(adminPassword, 12),
+        emailVerified: true,
+        status: "ACTIVE",
+        primaryRankId: adminRank.id,
+      },
+    });
+    console.log(`✅ Admin user: ${adminUser.email}`);
+  }
 
   // Default theme
   await prisma.theme.upsert({
