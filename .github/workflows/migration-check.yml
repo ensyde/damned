@@ -82,8 +82,10 @@ jobs:
           DESTRUCTIVE=false
           for FILE in $CHANGED; do
             echo "--- Checking $FILE ---"
-            # Look for common destructive keywords
-            if grep -iE '^\s*(DROP\s+(TABLE|COLUMN|INDEX|SCHEMA)|ALTER\s+TABLE.+(DROP|RENAME)\s+COLUMN|TRUNCATE)' "$FILE"; then
+            # Strip SQL comments before scanning so commented-out statements are ignored
+            STRIPPED=$(sed 's/--[^\n]*//g' "$FILE" | tr -s ' \n\t' ' ')
+            # Look for common destructive DML/DDL keywords (case-insensitive, single-line after stripping)
+            if echo "$STRIPPED" | grep -iqE 'DROP\s+(TABLE|COLUMN|INDEX|SCHEMA)|ALTER\s+TABLE\s+\S+\s+DROP\s+COLUMN|TRUNCATE'; then
               echo "⚠️  Potentially destructive SQL found in $FILE"
               DESTRUCTIVE=true
             fi

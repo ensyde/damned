@@ -53,7 +53,7 @@ packages/
 - Use `AuthRequest` (from `middleware/auth`) for routes that require authentication.
 - Rate-limit auth/sensitive endpoints using `middleware/rateLimit`.
 - Return consistent JSON shape: `{ success: true, data: … }` on success; `{ success: false, message: "…", errors?: […] }` on failure.
-- Log with `winston` (imported from `src/config/logger` or similar). Never use `console.log` in production paths.
+- Log with `winston` (imported from `src/utils/logger.ts`). Never use `console.log` in production paths.
 - All Prisma queries go through the shared `prisma` singleton from `src/config/prisma`.
 - Soft-delete records by setting `deletedAt`; filter them out with `deletedAt: null` in queries.
 

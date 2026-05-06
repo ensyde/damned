@@ -35,7 +35,7 @@ interface Props {
 <!-- Describe layout, Tailwind classes, colour tokens, interactive states, etc.
      Reference tailwind.config.js tokens: primary, accent, surface, bg, text -->
 
-## Behaviour
+## Behavior
 
 <!-- Describe user interactions, loading states, error states, empty states -->
 

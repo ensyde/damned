@@ -16,11 +16,11 @@ assignees: []
 2. 
 3. 
 
-## Expected Behaviour
+## Expected Behavior
 
 <!-- What should happen -->
 
-## Actual Behaviour
+## Actual Behavior
 
 <!-- What actually happens — include error messages, stack traces, or screenshots -->
 
@@ -39,6 +39,6 @@ assignees: []
 
 ## Acceptance Criteria
 
-- [ ] The described behaviour no longer occurs
+- [ ] The described behavior no longer occurs
 - [ ] Existing tests still pass (`npm run test`)
 - [ ] A regression test is added that would have caught this bug
