@@ -1,0 +1,101 @@
+name: Migration Safety Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - "packages/db/prisma/schema.prisma"
+      - "packages/db/prisma/migrations/**"
+
+jobs:
+  migration-check:
+    name: Prisma Migration Check
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: damned
+          POSTGRES_PASSWORD: damned
+          POSTGRES_DB: damned_migration_check
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://damned:damned@localhost:5432/damned_migration_check
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      # Apply all existing migrations to get the DB to the current baseline
+      - name: Apply existing migrations
+        working-directory: packages/db
+        run: npx prisma migrate deploy
+
+      # Detect whether the schema has any pending changes not yet captured in a migration file
+      - name: Check for schema drift (unapplied changes)
+        working-directory: packages/db
+        run: |
+          npx prisma migrate diff \
+            --from-migrations ./prisma/migrations \
+            --to-schema-datamodel ./prisma/schema.prisma \
+            --shadow-database-url "${DATABASE_URL}" \
+            --exit-code || {
+              echo ""
+              echo "⚠️  Schema drift detected: the Prisma schema has changes that are not yet"
+              echo "   captured in a migration file. Run 'npm run db:migrate' locally and commit"
+              echo "   the generated migration before merging."
+              exit 1
+            }
+
+      # Warn about potentially destructive operations in new migration files
+      - name: Scan for destructive SQL operations
+        working-directory: packages/db
+        run: |
+          # Find migration files added or modified in this PR
+          git fetch origin ${{ github.base_ref }} --depth=1
+          CHANGED=$(git diff --name-only origin/${{ github.base_ref }}...HEAD -- prisma/migrations/ | grep '\.sql$' || true)
+
+          if [ -z "$CHANGED" ]; then
+            echo "No new migration SQL files in this PR."
+            exit 0
+          fi
+
+          DESTRUCTIVE=false
+          for FILE in $CHANGED; do
+            echo "--- Checking $FILE ---"
+            # Strip SQL comments before scanning so commented-out statements are ignored
+            STRIPPED=$(sed 's/--[^\n]*//g' "$FILE" | tr -s ' \n\t' ' ')
+            # Look for common destructive DML/DDL keywords (case-insensitive, single-line after stripping)
+            if echo "$STRIPPED" | grep -iqE 'DROP\s+(TABLE|COLUMN|INDEX|SCHEMA)|ALTER\s+TABLE\s+\S+\s+DROP\s+COLUMN|TRUNCATE'; then
+              echo "⚠️  Potentially destructive SQL found in $FILE"
+              DESTRUCTIVE=true
+            fi
+          done
+
+          if [ "$DESTRUCTIVE" = "true" ]; then
+            echo ""
+            echo "⚠️  One or more migration files contain potentially destructive operations."
+            echo "   Please review carefully and ensure a rollback plan exists before merging."
+            echo "   This is a WARNING — the check will not fail the build, but reviewer approval is required."
+          else
+            echo "✅ No destructive SQL operations detected in new migration files."
+          fi
