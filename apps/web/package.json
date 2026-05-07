@@ -13,8 +13,8 @@
   "dependencies": {
     "@damned/shared": "*",
     "next": "^15.1.6",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
     "socket.io-client": "^4.8.1",
     "@tiptap/react": "^2.10.4",
     "@tiptap/starter-kit": "^2.10.4",
