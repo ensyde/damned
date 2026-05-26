@@ -1,4 +1,0 @@
-export { PrismaClient } from "@prisma/client";
-export type { User, Rank, RefreshToken, EmailVerificationToken, PasswordResetToken, ForumCategory, Subforum, Thread, Post, PostReaction, DownloadCategory, Download, DownloadReview, Conversation, ConversationParticipant, Message, Notification, NotificationPreference, StaticPage, Theme, WidgetLayout, Report, SiteSetting, AuditLog, } from "@prisma/client";
-export { UserStatus, NotificationType, DownloadStatus, MessageStatus, PageStatus, ReportStatus, ReportTarget, } from "@prisma/client";
-//# sourceMappingURL=index.d.ts.map
