@@ -3,93 +3,60 @@ import bcrypt from "bcryptjs";
 
 const prisma = new PrismaClient();
 
-const PERMISSIONS = {
-  ADMIN: [
-    "admin.panel",
-    "admin.users",
-    "admin.ranks",
-    "admin.reports",
-    "admin.settings",
-    "forum.post",
-    "forum.moderate",
-    "forum.lock",
-    "forum.pin",
-    "forum.delete",
-    "downloads.upload",
-    "downloads.approve",
-    "downloads.delete",
-    "messages.send",
-    "static_pages.edit",
-    "theme.edit",
-    "forum.staff_access",
-  ],
-  MODERATOR: [
-    "forum.post",
-    "forum.moderate",
-    "forum.lock",
-    "forum.pin",
-    "forum.delete",
-    "downloads.upload",
-    "downloads.approve",
-    "messages.send",
-    "admin.reports",
-    "forum.staff_access",
-  ],
-  VETERAN: ["forum.post", "downloads.upload", "messages.send"],
-  MEMBER: ["forum.post", "messages.send"],
-};
+const ALL_PERMISSIONS = [
+  "admin.panel",
+  "admin.users",
+  "admin.ranks",
+  "admin.reports",
+  "admin.settings",
+  "forum.post",
+  "forum.moderate",
+  "forum.lock",
+  "forum.pin",
+  "forum.delete",
+  "downloads.upload",
+  "downloads.approve",
+  "downloads.delete",
+  "messages.send",
+  "static_pages.edit",
+  "theme.edit",
+  "forum.staff_access",
+];
 
 async function main() {
   console.log("🌱 Seeding database...");
 
-  // Ranks
+  // Initial ranks: admin only
   const adminRank = await prisma.rank.upsert({
     where: { name: "Admin" },
-    update: {},
+    update: {
+      color: "#ef4444",
+      priority: 100,
+      isStaff: true,
+      isDefault: false,
+      permissions: ALL_PERMISSIONS,
+    },
     create: {
       name: "Admin",
       color: "#ef4444",
       priority: 100,
       isStaff: true,
-      permissions: PERMISSIONS.ADMIN,
+      isDefault: false,
+      permissions: ALL_PERMISSIONS,
     },
   });
 
-  const modRank = await prisma.rank.upsert({
-    where: { name: "Moderator" },
-    update: {},
-    create: {
-      name: "Moderator",
-      color: "#f59e0b",
-      priority: 50,
-      isStaff: true,
-      permissions: PERMISSIONS.MODERATOR,
-    },
+  await prisma.user.updateMany({
+    where: { primaryRankId: { not: adminRank.id } },
+    data: { primaryRankId: null },
   });
 
-  await prisma.rank.upsert({
-    where: { name: "Veteran" },
-    update: {},
-    create: {
-      name: "Veteran",
-      color: "#6366f1",
-      priority: 20,
-      isStaff: false,
-      permissions: PERMISSIONS.VETERAN,
-    },
+  await prisma.userSecondaryRank.deleteMany({
+    where: { rankId: { not: adminRank.id } },
   });
 
-  await prisma.rank.upsert({
-    where: { name: "Member" },
-    update: {},
-    create: {
-      name: "Member",
-      color: "#94a3b8",
-      priority: 10,
-      isDefault: true,
-      isStaff: false,
-      permissions: PERMISSIONS.MEMBER,
-    },
+  await prisma.rank.deleteMany({
+    where: { id: { not: adminRank.id } },
   });
 
   // Admin user
@@ -99,7 +66,11 @@ async function main() {
   } else {
     const adminUser = await prisma.user.upsert({
       where: { email: "admin@damned.gg" },
-      update: {},
+      update: {
+        primaryRankId: adminRank.id,
+        emailVerified: true,
+        status: "ACTIVE",
+      },
       create: {
         username: "admin",
         email: "admin@damned.gg",
